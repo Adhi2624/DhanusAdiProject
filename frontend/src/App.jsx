@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
-const API_BASE = "https://localhost:5000"; // Change if backend is hosted elsewhere
+const API_BASE = "http://localhost:5000"; // Change if backend is hosted elsewhere
 
 export default function App() {
   const [googleFiles, setGoogleFiles] = useState([]);
@@ -11,34 +11,14 @@ export default function App() {
     google: false,
     onedrive: false,
     googleUpload: false,
-    onedriveUpload: false,
-    moving: false
+    onedriveUpload: false
   });
   const [activeTab, setActiveTab] = useState("google");
-  const [userDetails, setUserDetails] = useState({
-    google: null,
-    onedrive: null
-  });
 
   useEffect(() => {
     fetchGoogleFiles();
     fetchOneDriveFiles();
-    fetchUserDetails();
   }, []);
-
-  const fetchUserDetails = async () => {
-    try {
-      const googleRes = await axios.get(`${API_BASE}/user/google`);
-      const onedriveRes = await axios.get(`${API_BASE}/user/onedrive`);
-      
-      setUserDetails({
-        google: googleRes.data.user || null,
-        onedrive: onedriveRes.data.user || null
-      });
-    } catch (err) {
-      console.error("Error fetching user details:", err);
-    }
-  };
 
   const fetchGoogleFiles = async () => {
     try {
@@ -110,61 +90,6 @@ export default function App() {
     }
   };
 
-  const handleMoveFile = async (sourceService, fileId, fileName) => {
-    const targetService = sourceService === "google" ? "onedrive" : "google";
-    const serviceName = {
-      google: "Google Drive",
-      onedrive: "OneDrive"
-    };
-    
-    // Check if both services are connected
-    if (!userDetails[targetService]) {
-      return alert(`You need to connect to ${serviceName[targetService]} first!`);
-    }
-    
-    if (!confirm(`Move "${fileName}" from ${serviceName[sourceService]} to ${serviceName[targetService]}?`)) return;
-    
-    try {
-      setLoading(prev => ({ ...prev, moving: true }));
-      
-      await axios.post(`${API_BASE}/move/${sourceService}/${fileId}`, {
-        targetService: targetService
-      });
-      
-      alert(`File "${fileName}" moved successfully!`);
-      // Refresh both file lists
-      fetchGoogleFiles();
-      fetchOneDriveFiles();
-    } catch (err) {
-      console.error("Move error:", err);
-      alert(`Move failed: ${err.response?.data?.error || err.message}`);
-    } finally {
-      setLoading(prev => ({ ...prev, moving: false }));
-    }
-  };
-
-  const handleLogout = async (service) => {
-    try {
-      await axios.get(`${API_BASE}/logout/${service}`);
-      alert(`Logged out from ${service === 'google' ? 'Google Drive' : 'OneDrive'} successfully!`);
-      
-      // Reset user details and files for the service
-      setUserDetails(prev => ({
-        ...prev,
-        [service]: null
-      }));
-      
-      if (service === 'google') {
-        setGoogleFiles([]);
-      } else {
-        setOneDriveFiles([]);
-      }
-    } catch (err) {
-      console.error("Logout error:", err);
-      alert(`Logout failed: ${err.message}`);
-    }
-  };
-
   const renderFileList = (files, service) => {
     if (loading[service]) {
       return <div className="text-gray-500 italic py-4">Loading...</div>;
@@ -173,10 +98,6 @@ export default function App() {
     if (files.length === 0) {
       return <div className="text-gray-500 italic py-4">No files found</div>;
     }
-    
-    const targetService = service === "google" ? "onedrive" : "google";
-    const targetServiceName = service === "google" ? "OneDrive" : "Google Drive";
-    const targetServiceConnected = !!userDetails[targetService];
     
     return (
       <div className="bg-white rounded-lg shadow overflow-hidden w-full">
@@ -199,13 +120,6 @@ export default function App() {
                     Download
                   </button>
                   <button 
-                    onClick={() => handleMoveFile(service, file.id, file.name)}
-                    disabled={!targetServiceConnected || loading.moving}
-                    className={`mr-4 ${targetServiceConnected ? "text-purple-600 hover:text-purple-900" : "text-gray-400"}`}
-                  >
-                    {loading.moving ? 'Moving...' : `Move to ${targetServiceName}`}
-                  </button>
-                  <button 
                     onClick={() => handleDelete(service, file.id, file.name)} 
                     className="text-red-600 hover:text-red-900"
                   >
@@ -220,52 +134,6 @@ export default function App() {
     );
   };
 
-  const renderUserDetails = (service) => {
-    const user = userDetails[service];
-    const serviceTitle = service === 'google' ? 'Google Drive' : 'OneDrive';
-    const bgColor = service === 'google' ? 'bg-blue-50' : 'bg-green-50';
-    const borderColor = service === 'google' ? 'border-blue-200' : 'border-green-200';
-    const textColor = service === 'google' ? 'text-blue-800' : 'text-green-800';
-    const buttonBg = service === 'google' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700';
-    
-    if (!user) {
-      return (
-        <div className={`rounded-lg border ${borderColor} ${bgColor} p-4 mb-4`}>
-          <div className="flex justify-between items-center">
-            <p className={`text-sm ${textColor}`}>Not connected to {serviceTitle}</p>
-            <a 
-              href={`${API_BASE}/login/${service}`}
-              className={`px-4 py-2 rounded-md text-white text-sm font-medium ${buttonBg} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-${service === 'google' ? 'blue' : 'green'}-500`}
-            >
-              Connect
-            </a>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className={`rounded-lg border ${borderColor} ${bgColor} p-4 mb-4`}>
-        <div className="flex justify-between items-center">
-          <div className="flex flex-col">
-            <p className={`font-medium ${textColor}`}>
-              {user.name || user.displayName || "User"}
-            </p>
-            <p className={`text-sm ${textColor}`}>
-              {user.email}
-            </p>
-          </div>
-          <button 
-            onClick={() => handleLogout(service)}
-            className={`px-4 py-2 rounded-md text-white text-sm font-medium ${buttonBg} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-${service === 'google' ? 'blue' : 'green'}-500`}
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-gray-100 w-full">
       <div className="w-full px-4 py-8">
@@ -274,12 +142,22 @@ export default function App() {
           <p className="mt-2 text-lg text-gray-600">Manage your files across multiple cloud services</p>
         </div>
         
-        {/* User Details Section */}
+        {/* Authentication Section */}
         <div className="bg-white rounded-lg shadow mb-8 p-6 w-full">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Account Status</h2>
-          <div className="space-y-4">
-            {renderUserDetails('google')}
-            {renderUserDetails('onedrive')}
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">Account Connection</h2>
+          <div className="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0">
+            <a 
+              href={`${API_BASE}/login/google`} 
+              className="flex-1 flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Connect Google Drive
+            </a>
+            <a 
+              href={`${API_BASE}/login/onedrive`} 
+              className="flex-1 flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            >
+              Connect OneDrive
+            </a>
           </div>
         </div>
         
@@ -301,15 +179,15 @@ export default function App() {
             <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 w-full md:w-1/2 md:justify-end md:pl-4">
               <button 
                 onClick={() => handleFileUpload("google")} 
-                disabled={!file || loading.googleUpload || !userDetails.google}
-                className={`py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${!file || loading.googleUpload || !userDetails.google ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+                disabled={!file || loading.googleUpload}
+                className={`py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${!file || loading.googleUpload ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
               >
                 {loading.googleUpload ? 'Uploading...' : 'Upload to Google'}
               </button>
               <button 
                 onClick={() => handleFileUpload("onedrive")} 
-                disabled={!file || loading.onedriveUpload || !userDetails.onedrive}
-                className={`py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${!file || loading.onedriveUpload || !userDetails.onedrive ? 'bg-green-300' : 'bg-green-600 hover:bg-green-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+                disabled={!file || loading.onedriveUpload}
+                className={`py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${!file || loading.onedriveUpload ? 'bg-green-300' : 'bg-green-600 hover:bg-green-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
               >
                 {loading.onedriveUpload ? 'Uploading...' : 'Upload to OneDrive'}
               </button>
@@ -319,16 +197,6 @@ export default function App() {
         
         {/* File Browser Section */}
         <div className="bg-white rounded-lg shadow overflow-hidden w-full">
-          {userDetails.google && userDetails.onedrive && (
-            <div className="p-4 bg-purple-50 border-b border-purple-100">
-              <div className="flex items-center justify-center">
-                <span className="text-purple-700 font-medium">
-                  You can now move files between Google Drive and OneDrive!
-                </span>
-              </div>
-            </div>
-          )}
-          
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex" aria-label="Tabs">
               <button
@@ -361,26 +229,15 @@ export default function App() {
               </h2>
               <button
                 onClick={() => activeTab === 'google' ? fetchGoogleFiles() : fetchOneDriveFiles()}
-                disabled={activeTab === 'google' ? !userDetails.google : !userDetails.onedrive}
-                className={`inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md 
-                  ${(activeTab === 'google' && !userDetails.google) || (activeTab === 'onedrive' && !userDetails.onedrive) 
-                    ? 'text-gray-400 bg-gray-100' 
-                    : 'text-blue-700 bg-blue-100 hover:bg-blue-200'} 
-                  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+                className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Refresh
               </button>
             </div>
             
-            {!userDetails[activeTab] ? (
-              <div className="text-center py-8">
-                <p className="text-gray-500">Please connect your {activeTab === 'google' ? 'Google Drive' : 'OneDrive'} account to view files.</p>
-              </div>
-            ) : (
-              activeTab === 'google' ? 
-                renderFileList(googleFiles, 'google') : 
-                renderFileList(oneDriveFiles, 'onedrive')
-            )}
+            {activeTab === 'google' ? 
+              renderFileList(googleFiles, 'google') : 
+              renderFileList(oneDriveFiles, 'onedrive')}
           </div>
         </div>
       </div>
