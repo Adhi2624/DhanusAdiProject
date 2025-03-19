@@ -321,10 +321,74 @@ def delete_onedrive(file_id):
     else:
         return jsonify({"error": "Failed to delete file", "status": response.status_code}), response.status_code
 
-@app.route('/logout', methods=['POST'])
-def logout():
-    session.clear()
-    return jsonify({"success": True, "message": "Logged out successfully"})
+# Add these routes to your Flask backend
+
+
+
+# User details routes
+@app.route('/user/google', methods=['GET'])
+def get_google_user():
+    try:
+        # Check if user is authenticated with Google
+        if 'google_tokens' not in session:
+            return jsonify({"user": None})
+        
+        # Fetch user info using the access token
+        headers = {
+            'Authorization': f"Bearer {session['google_tokens']['access_token']}"
+        }
+        response = requests.get('https://www.googleapis.com/oauth2/v2/userinfo', headers=headers)
+        
+        if response.status_code == 200:
+            return jsonify({"user": response.json()})
+        else:
+            # Token might be expired
+            return jsonify({"user": None})
+            
+    except Exception as e:
+        print(f"Error fetching Google user info: {e}")
+        return jsonify({"error": "Failed to fetch user information"}), 500
+
+@app.route('/user/onedrive', methods=['GET'])
+def get_onedrive_user():
+    try:
+        # Check if user is authenticated with OneDrive
+        if 'onedrive_tokens' not in session:
+            return jsonify({"user": None})
+        
+        # Fetch user info from Microsoft Graph API
+        headers = {
+            'Authorization': f"Bearer {session['onedrive_tokens']['access_token']}"
+        }
+        response = requests.get('https://graph.microsoft.com/v1.0/me', headers=headers)
+        
+        if response.status_code == 200:
+            return jsonify({"user": response.json()})
+        else:
+            # Token might be expired
+            return jsonify({"user": None})
+            
+    except Exception as e:
+        print(f"Error fetching OneDrive user info: {e}")
+        return jsonify({"error": "Failed to fetch user information"}), 500
+
+# Logout routes
+@app.route('/logout/google', methods=['GET'])
+def logout_google():
+    if 'google_tokens' in session:
+        session.pop('google_tokens', None)
+        return jsonify({"success": True, "message": "Logged out from Google Drive"})
+    else:
+        return jsonify({"success": False, "message": "Not logged in to Google Drive"})
+
+@app.route('/logout/onedrive', methods=['GET'])
+def logout_onedrive():
+    if 'onedrive_tokens' in session:
+        session.pop('onedrive_tokens', None)
+        return jsonify({"success": True, "message": "Logged out from OneDrive"})
+    else:
+        return jsonify({"success": False, "message": "Not logged in to OneDrive"})
+
 
 if __name__ == '__main__':
     with app.app_context():
