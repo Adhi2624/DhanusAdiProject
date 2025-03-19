@@ -64,7 +64,7 @@ def authorize_google():
     else:
         user.google_token = token
     db.session.commit()
-    return jsonify(user_info)
+    return redirect('http://localhost:5173', 301)  # Changed to HTTPS 
 
 # OneDrive authentication routes
 @app.route('/login/onedrive')
@@ -393,4 +393,6 @@ def logout_onedrive():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    app.run(debug=True,port=5000,
+        ssl_context=('certs/cert.pem', 'certs/key.pem')
+)

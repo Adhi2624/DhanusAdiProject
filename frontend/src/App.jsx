@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
-const API_BASE = "http://localhost:5000"; // Change if backend is hosted elsewhere
+const API_BASE = "https://localhost:5000"; // Change if backend is hosted elsewhere
 
 export default function App() {
   const [googleFiles, setGoogleFiles] = useState([]);
@@ -11,7 +11,8 @@ export default function App() {
     google: false,
     onedrive: false,
     googleUpload: false,
-    onedriveUpload: false
+    onedriveUpload: false,
+    moving: false
   });
   const [activeTab, setActiveTab] = useState("google");
   const [userDetails, setUserDetails] = useState({
@@ -109,6 +110,39 @@ export default function App() {
     }
   };
 
+  const handleMoveFile = async (sourceService, fileId, fileName) => {
+    const targetService = sourceService === "google" ? "onedrive" : "google";
+    const serviceName = {
+      google: "Google Drive",
+      onedrive: "OneDrive"
+    };
+    
+    // Check if both services are connected
+    if (!userDetails[targetService]) {
+      return alert(`You need to connect to ${serviceName[targetService]} first!`);
+    }
+    
+    if (!confirm(`Move "${fileName}" from ${serviceName[sourceService]} to ${serviceName[targetService]}?`)) return;
+    
+    try {
+      setLoading(prev => ({ ...prev, moving: true }));
+      
+      await axios.post(`${API_BASE}/move/${sourceService}/${fileId}`, {
+        targetService: targetService
+      });
+      
+      alert(`File "${fileName}" moved successfully!`);
+      // Refresh both file lists
+      fetchGoogleFiles();
+      fetchOneDriveFiles();
+    } catch (err) {
+      console.error("Move error:", err);
+      alert(`Move failed: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setLoading(prev => ({ ...prev, moving: false }));
+    }
+  };
+
   const handleLogout = async (service) => {
     try {
       await axios.get(`${API_BASE}/logout/${service}`);
@@ -140,6 +174,10 @@ export default function App() {
       return <div className="text-gray-500 italic py-4">No files found</div>;
     }
     
+    const targetService = service === "google" ? "onedrive" : "google";
+    const targetServiceName = service === "google" ? "OneDrive" : "Google Drive";
+    const targetServiceConnected = !!userDetails[targetService];
+    
     return (
       <div className="bg-white rounded-lg shadow overflow-hidden w-full">
         <table className="min-w-full divide-y divide-gray-200">
@@ -159,6 +197,13 @@ export default function App() {
                     className="text-blue-600 hover:text-blue-900 mr-4"
                   >
                     Download
+                  </button>
+                  <button 
+                    onClick={() => handleMoveFile(service, file.id, file.name)}
+                    disabled={!targetServiceConnected || loading.moving}
+                    className={`mr-4 ${targetServiceConnected ? "text-purple-600 hover:text-purple-900" : "text-gray-400"}`}
+                  >
+                    {loading.moving ? 'Moving...' : `Move to ${targetServiceName}`}
                   </button>
                   <button 
                     onClick={() => handleDelete(service, file.id, file.name)} 
@@ -274,6 +319,16 @@ export default function App() {
         
         {/* File Browser Section */}
         <div className="bg-white rounded-lg shadow overflow-hidden w-full">
+          {userDetails.google && userDetails.onedrive && (
+            <div className="p-4 bg-purple-50 border-b border-purple-100">
+              <div className="flex items-center justify-center">
+                <span className="text-purple-700 font-medium">
+                  You can now move files between Google Drive and OneDrive!
+                </span>
+              </div>
+            </div>
+          )}
+          
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex" aria-label="Tabs">
               <button
