@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>CloudSync</title>
+    <script>
+        function fetchGoogleDriveFiles() {
+            fetch("/google-drive/files")
+                .then(response => response.json())
+                .then(data => {
+                    let filesList = document.getElementById("googleDriveFiles");
+                    filesList.innerHTML = "";
+                    if (data.error) {
+                        filesList.innerHTML = `<li>${data.error}</li>`;
+                    } else {
+                        data.forEach(file => {
+                            filesList.innerHTML += `<li>${file.name}</li>`;
+                        });
+                    }
+                });
+        }
+
+        function fetchOneDriveFiles() {
+            fetch("/onedrive/files")
+                .then(response => response.json())
+                .then(data => {
+                    let filesList = document.getElementById("oneDriveFiles");
+                    filesList.innerHTML = "";
+                    if (data.error) {
+                        filesList.innerHTML = `<li>${data.error}</li>`;
+                    } else {
+                        data.forEach(file => {
+                            filesList.innerHTML += `<li>${file.name} <a href="/onedrive/download/${file.id}">Download</a> <button onclick="deleteOneDriveFile('${file.id}')">Delete</button></li>`;
+                        });
+                    }
+                });
+        }
+
+        function deleteOneDriveFile(fileId) {
+            fetch(`/onedrive/delete/${fileId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    alert(data.message);
+                    fetchOneDriveFiles();
+                } else {
+                    alert(data.error);
+                }
+            });
+        }
+
+        function uploadOneDriveFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a file to upload.');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('file', file);
+            fetch('/onedrive/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    alert(data.message);
+                    fetchOneDriveFiles();
+                } else {
+                    alert(data.error);
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>CloudSync</h1>
+    <button onclick="fetchGoogleDriveFiles()">List Google Drive Files</button>
+    <ul id="googleDriveFiles"></ul>
+    <br>
+    <button onclick="fetchOneDriveFiles()">List OneDrive Files</button>
+    <ul id="oneDriveFiles"></ul>
+    <br>
+    <input type="file" id="fileInput">
+    <button onclick="uploadOneDriveFile()">Upload to OneDrive</button>
+    <br>
+    <a href="{{ url_for('auth.onedrive_login') }}"><button>Connect OneDrive</button></a>
+</body>
+</html>

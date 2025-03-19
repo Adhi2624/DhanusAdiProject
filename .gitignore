@@ -1,0 +1,5 @@
+__pycache__
+.env
+credentials.json
+frontend/node_modules
+instance

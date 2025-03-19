@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+</head>
+<body>
+    <h1>Welcome, {{ user.email }}</h1>
+    <a href="{{ url_for('auth.google_login') }}">Link Google Drive</a>
+    <a href="{{ url_for('auth.onedrive_login') }}">Link OneDrive</a>
+    <a href="{{ url_for('auth.logout') }}">Logout</a>
+</body>
+</html>
