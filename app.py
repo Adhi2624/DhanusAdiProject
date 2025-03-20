@@ -87,10 +87,10 @@ def login_onedrive():
 @app.route('/authorize/onedrive')
 def authorize_onedrive():
     token = onedrive.authorize_access_token()
-    user_info = onedrive.get('me').json()
+    #user_info = onedrive.get('me').json()
     
     # Use logger instead of print
-    logger.info(f"Available keys in user_info: {user_info.keys()}")
+    logger.info(f"Available keys in user_info: {token.keys()}")
     
     # Try different possible email field names
     email = token.get('userinfo', {}).get('email')
@@ -102,8 +102,8 @@ def authorize_onedrive():
     
     if not email:
         # If no email field is found, use an alternative identifier or return an error
-        logger.error(f"No email field found in OneDrive user info: {user_info}")
-        return jsonify({"error": user_info}), 400
+        logger.error(f"No email field found in OneDrive user info: {'sc'}")
+        return jsonify({"error": 'user_info'}), 400
     
     user = User.query.filter_by(email=email).first()
     if not user:
