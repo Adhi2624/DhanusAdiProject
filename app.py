@@ -27,6 +27,9 @@ db = SQLAlchemy(app)
 oauth = OAuth(app)
 CORS(app, allow_origins=["*"], supports_credentials=True)
 
+# Frontend URL for redirect after auth
+FRONTEND_URL = "http://localhost:5173"
+
 # OAuth Configuration
 google = oauth.register(
     name='google',
@@ -55,7 +58,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True, nullable=False)
     google_token = db.Column(db.JSON)
-    onedrive_token = db.Column(db.JSON,nullable=True)
+    onedrive_token = db.Column(db.JSON, nullable=True)
 
 @app.route('/')
 def home():
@@ -77,7 +80,9 @@ def authorize_google():
     else:
         user.google_token = token
     db.session.commit()
-    return jsonify(user_info)
+    
+    # Redirect to frontend after successful login
+    return redirect(FRONTEND_URL)
 
 # OneDrive authentication routes
 @app.route('/login/onedrive')
@@ -87,18 +92,13 @@ def login_onedrive():
 @app.route('/authorize/onedrive')
 def authorize_onedrive():
     token = onedrive.authorize_access_token()
-    #user_info = onedrive.get('me').json()
-    
-    # Use logger instead of print
-    logger.info(f"Available keys in user_info: {token.keys()}")
     
     # Try different possible email field names
     email = token.get('userinfo', {}).get('email')
-        
-        # If email is not found, try preferred_username as fallback
+    
+    # If email is not found, try preferred_username as fallback
     if not email:
         email = token.get('userinfo', {}).get('preferred_username')
-    
     
     if not email:
         # If no email field is found, use an alternative identifier or return an error
@@ -113,7 +113,9 @@ def authorize_onedrive():
         user.onedrive_token = token
     
     db.session.commit()
-    return jsonify({"success": True, "message": "Logged in successfully", "email": email})
+    
+    # Redirect to frontend after successful login
+    return redirect(FRONTEND_URL)
 
 # Google Drive operations
 @app.route('/files/google')
@@ -392,6 +394,179 @@ def delete_onedrive(file_id):
     else:
         logger.error(f"Failed to delete file from OneDrive: {file_id}, status: {response.status_code}")
         return jsonify({"error": "Failed to delete file", "status": response.status_code}), response.status_code
+
+# New routes for file transfer between drives
+
+@app.route('/transfer/gdrive-to-onedrive/<file_id>', methods=['POST'])
+def transfer_gdrive_to_onedrive(file_id):
+    user = User.query.first()
+    
+    # Check if the user is authenticated to both services
+    if not user or not user.google_token or not user.onedrive_token:
+        logger.warning("User not authenticated with both services")
+        return jsonify({"error": "User not authenticated with both Google Drive and OneDrive"}), 401
+    
+    # Check and refresh Google token if needed
+    if 'expires_at' in user.google_token and datetime.datetime.fromtimestamp(user.google_token['expires_at']) < datetime.datetime.now():
+        logger.info("Refreshing Google token")
+        token = google.refresh_token(user.google_token['refresh_token'])
+        user.google_token = token
+        db.session.commit()
+    
+    # Check and refresh OneDrive token if needed
+    if 'expires_at' in user.onedrive_token and datetime.datetime.fromtimestamp(user.onedrive_token['expires_at']) < datetime.datetime.now():
+        logger.info("Refreshing OneDrive token")
+        token = onedrive.refresh_token(user.onedrive_token['refresh_token'])
+        user.onedrive_token = token
+        db.session.commit()
+    
+    google_headers = {'Authorization': f'Bearer {user.google_token["access_token"]}'}
+    
+    # Step 1: Get file metadata from Google Drive
+    logger.info(f"Getting metadata for Google Drive file: {file_id}")
+    metadata_response = requests.get(f'https://www.googleapis.com/drive/v3/files/{file_id}?fields=name', headers=google_headers)
+    if metadata_response.status_code != 200:
+        logger.error(f"File not found on Google Drive: {file_id}")
+        return jsonify({"error": "File not found on Google Drive"}), 404
+    
+    file_name = metadata_response.json().get('name', 'transferred_file')
+    
+    # Step 2: Download file content from Google Drive
+    logger.info(f"Downloading file from Google Drive: {file_name} ({file_id})")
+    download_response = requests.get(f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media', headers=google_headers)
+    if download_response.status_code != 200:
+        logger.error(f"Failed to download file from Google Drive: {file_id}")
+        return jsonify({"error": "Failed to download file from Google Drive"}), 500
+    
+    file_content = download_response.content
+    content_type = download_response.headers.get('Content-Type', 'application/octet-stream')
+    
+    # Step 3: Upload to OneDrive
+    logger.info(f"Uploading file to OneDrive: {file_name} ({len(file_content)} bytes)")
+    
+    onedrive_headers = {
+        'Authorization': f'Bearer {user.onedrive_token["access_token"]}',
+        'Content-Type': content_type
+    }
+    
+    # For small files (less than 4MB), use simple upload
+    if len(file_content) < 4 * 1024 * 1024:
+        logger.info(f"Using simple upload for small file to OneDrive: {file_name}")
+        upload_url = f'https://graph.microsoft.com/v1.0/me/drive/root:/{file_name}:/content'
+        response = requests.put(upload_url, headers=onedrive_headers, data=file_content)
+        
+        if response.status_code in [200, 201]:
+            logger.info(f"File transferred successfully to OneDrive: {file_name}")
+            return jsonify({"success": True, "message": "File transferred successfully", "destination": "OneDrive", "file": response.json()})
+        else:
+            logger.error(f"Failed to upload file to OneDrive: {file_name}")
+            return jsonify({"error": "Failed to upload file to OneDrive", "status": response.status_code}), 500
+    
+    # For larger files, create an upload session
+    else:
+        logger.info(f"Using session upload for large file to OneDrive: {file_name}")
+        session_headers = {
+            'Authorization': f'Bearer {user.onedrive_token["access_token"]}',
+            'Content-Type': 'application/json'
+        }
+        
+        create_session_url = f'https://graph.microsoft.com/v1.0/me/drive/root:/{file_name}:/createUploadSession'
+        session_response = requests.post(create_session_url, headers=session_headers)
+        upload_session = session_response.json()
+        
+        if 'uploadUrl' in upload_session:
+            upload_url = upload_session['uploadUrl']
+            total_size = len(file_content)
+            chunk_size = 320 * 1024  # 320 KB chunks
+            
+            # Upload file in chunks
+            for i in range(0, total_size, chunk_size):
+                chunk = file_content[i:i + chunk_size]
+                chunk_end = min(i + chunk_size - 1, total_size - 1)
+                
+                logger.info(f"Uploading chunk {i}-{chunk_end}/{total_size} for file to OneDrive: {file_name}")
+                chunk_headers = {
+                    'Content-Length': str(len(chunk)),
+                    'Content-Range': f'bytes {i}-{chunk_end}/{total_size}'
+                }
+                
+                response = requests.put(upload_url, headers=chunk_headers, data=chunk)
+                
+                # Check the final chunk response
+                if i + chunk_size >= total_size:
+                    if response.status_code in [200, 201]:
+                        logger.info(f"File transferred successfully to OneDrive: {file_name}")
+                        return jsonify({"success": True, "message": "File transferred successfully", "destination": "OneDrive", "file": response.json()})
+                    else:
+                        logger.error(f"Failed to complete upload to OneDrive: {file_name}")
+                        return jsonify({"error": "Failed to complete upload to OneDrive", "status": response.status_code}), 500
+        
+        logger.error(f"Failed to create upload session for OneDrive: {file_name}")
+        return jsonify({"error": "Failed to create upload session for OneDrive"}), 500
+
+@app.route('/transfer/onedrive-to-gdrive/<file_id>', methods=['POST'])
+def transfer_onedrive_to_gdrive(file_id):
+    user = User.query.first()
+    
+    # Check if the user is authenticated to both services
+    if not user or not user.google_token or not user.onedrive_token:
+        logger.warning("User not authenticated with both services")
+        return jsonify({"error": "User not authenticated with both Google Drive and OneDrive"}), 401
+    
+    # Check and refresh Google token if needed
+    if 'expires_at' in user.google_token and datetime.datetime.fromtimestamp(user.google_token['expires_at']) < datetime.datetime.now():
+        logger.info("Refreshing Google token")
+        token = google.refresh_token(user.google_token['refresh_token'])
+        user.google_token = token
+        db.session.commit()
+    
+    # Check and refresh OneDrive token if needed
+    if 'expires_at' in user.onedrive_token and datetime.datetime.fromtimestamp(user.onedrive_token['expires_at']) < datetime.datetime.now():
+        logger.info("Refreshing OneDrive token")
+        token = onedrive.refresh_token(user.onedrive_token['refresh_token'])
+        user.onedrive_token = token
+        db.session.commit()
+    
+    onedrive_headers = {'Authorization': f'Bearer {user.onedrive_token["access_token"]}'}
+    
+    # Step 1: Get file metadata from OneDrive
+    logger.info(f"Getting metadata for OneDrive file: {file_id}")
+    metadata_response = requests.get(f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}', headers=onedrive_headers)
+    if metadata_response.status_code != 200:
+        logger.error(f"File not found on OneDrive: {file_id}")
+        return jsonify({"error": "File not found on OneDrive"}), 404
+    
+    file_name = metadata_response.json().get('name', 'transferred_file')
+    
+    # Step 2: Download file content from OneDrive
+    logger.info(f"Downloading file from OneDrive: {file_name} ({file_id})")
+    download_response = requests.get(f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/content', headers=onedrive_headers)
+    if download_response.status_code != 200:
+        logger.error(f"Failed to download file from OneDrive: {file_id}")
+        return jsonify({"error": "Failed to download file from OneDrive"}), 500
+    
+    file_content = download_response.content
+    content_type = download_response.headers.get('Content-Type', 'application/octet-stream')
+    
+    # Step 3: Upload to Google Drive
+    logger.info(f"Uploading file to Google Drive: {file_name} ({len(file_content)} bytes)")
+    
+    google_headers = {'Authorization': f'Bearer {user.google_token["access_token"]}'}
+    
+    metadata = {'name': file_name}
+    files = {
+        'metadata': ('metadata', json.dumps(metadata), 'application/json'),
+        'file': (file_name, file_content, content_type)
+    }
+    
+    response = requests.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', headers=google_headers, files=files)
+    
+    if response.status_code in [200, 201]:
+        logger.info(f"File transferred successfully to Google Drive: {file_name}")
+        return jsonify({"success": True, "message": "File transferred successfully", "destination": "Google Drive", "file": response.json()})
+    else:
+        logger.error(f"Failed to upload file to Google Drive: {file_name}")
+        return jsonify({"error": "Failed to upload file to Google Drive", "status": response.status_code}), 500
 
 @app.route('/logout', methods=['POST'])
 def logout():

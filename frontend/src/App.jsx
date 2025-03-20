@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 
-
 const API_BASE = 'https://dhanusadiproject.onrender.com'; // Change if backend is hosted elsewhere
+
+// Configure axios to include credentials
+axios.defaults.withCredentials = true;
 
 export default function App() {
   const [googleFiles, setGoogleFiles] = useState([]);
@@ -12,9 +14,11 @@ export default function App() {
     google: false,
     onedrive: false,
     googleUpload: false,
-    onedriveUpload: false
+    onedriveUpload: false,
+    transfer: false
   });
   const [activeTab, setActiveTab] = useState("google");
+  const [transferStatus, setTransferStatus] = useState("");
 
   useEffect(() => {
     fetchGoogleFiles();
@@ -28,6 +32,9 @@ export default function App() {
       setGoogleFiles(res.data.files || []);
     } catch (err) {
       console.error("Error fetching Google Drive files:", err);
+      if (err.response?.status === 401) {
+        setGoogleFiles([]);
+      }
     } finally {
       setLoading(prev => ({ ...prev, google: false }));
     }
@@ -40,6 +47,9 @@ export default function App() {
       setOneDriveFiles(res.data.value || []);
     } catch (err) {
       console.error("Error fetching OneDrive files:", err);
+      if (err.response?.status === 401) {
+        setOneDriveFiles([]);
+      }
     } finally {
       setLoading(prev => ({ ...prev, onedrive: false }));
     }
@@ -91,13 +101,52 @@ export default function App() {
     }
   };
 
+  const handleTransfer = async (sourceService, fileId, fileName) => {
+    try {
+      setLoading(prev => ({ ...prev, transfer: true }));
+      setTransferStatus(`Transferring ${fileName}...`);
+      
+      let endpoint;
+      if (sourceService === "google") {
+        endpoint = `/transfer/gdrive-to-onedrive/${fileId}`;
+      } else {
+        endpoint = `/transfer/onedrive-to-gdrive/${fileId}`;
+      }
+      
+      const response = await axios.post(`${API_BASE}${endpoint}`);
+      
+      alert(`File transferred successfully to ${response.data.destination}!`);
+      // Refresh both file lists
+      fetchGoogleFiles();
+      fetchOneDriveFiles();
+    } catch (err) {
+      console.error("Transfer error:", err);
+      alert(`Transfer failed: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setLoading(prev => ({ ...prev, transfer: false }));
+      setTransferStatus("");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${API_BASE}/logout`);
+      alert("Logged out successfully");
+      // Clear file lists
+      setGoogleFiles([]);
+      setOneDriveFiles([]);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
+
   const renderFileList = (files, service) => {
     if (loading[service]) {
       return <div className="text-gray-500 italic py-4">Loading...</div>;
     }
     
     if (files.length === 0) {
-      return <div className="text-gray-500 italic py-4">No files found</div>;
+      return <div className="text-gray-500 italic py-4">No files found or not authenticated</div>;
     }
     
     return (
@@ -116,15 +165,22 @@ export default function App() {
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button 
                     onClick={() => handleDownload(service, file.id, file.name)} 
-                    className="text-blue-600 hover:text-blue-900 mr-4"
+                    className="text-blue-600 hover:text-blue-900 mr-2"
                   >
                     Download
                   </button>
                   <button 
                     onClick={() => handleDelete(service, file.id, file.name)} 
-                    className="text-red-600 hover:text-red-900"
+                    className="text-red-600 hover:text-red-900 mr-2"
                   >
                     Delete
+                  </button>
+                  <button 
+                    onClick={() => handleTransfer(service, file.id, file.name)} 
+                    className="text-purple-600 hover:text-purple-900"
+                    disabled={loading.transfer}
+                  >
+                    Transfer to {service === "google" ? "OneDrive" : "Google"}
                   </button>
                 </td>
               </tr>
@@ -159,6 +215,12 @@ export default function App() {
             >
               Connect OneDrive
             </a>
+            <button 
+              onClick={handleLogout} 
+              className="flex-1 flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            >
+              Logout
+            </button>
           </div>
         </div>
         
@@ -195,6 +257,13 @@ export default function App() {
             </div>
           </div>
         </div>
+        
+        {/* Transfer Status Indicator */}
+        {transferStatus && (
+          <div className="bg-purple-100 border-l-4 border-purple-500 text-purple-700 p-4 mb-4">
+            <p className="font-medium">{transferStatus}</p>
+          </div>
+        )}
         
         {/* File Browser Section */}
         <div className="bg-white rounded-lg shadow overflow-hidden w-full">
