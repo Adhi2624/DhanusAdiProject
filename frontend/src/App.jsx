@@ -1,9 +1,8 @@
-require("dotenv").config();
 import { useState, useEffect } from "react";
 import axios from "axios";
 
 
-const API_BASE = REACT_APP_BACKEND; // Change if backend is hosted elsewhere
+const API_BASE = import.meta.env.REACT_APP_BACKEND; // Change if backend is hosted elsewhere
 
 export default function App() {
   const [googleFiles, setGoogleFiles] = useState([]);
