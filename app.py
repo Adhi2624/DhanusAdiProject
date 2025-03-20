@@ -86,49 +86,31 @@ def login_onedrive():
 
 @app.route('/authorize/onedrive')
 def authorize_onedrive():
-    try:
-        # Get token from authorization
-        token = onedrive.authorize_access_token()
-        
-        # Store the entire token object rather than trying to serialize it later
-        token_data = {
-            'access_token': token['access_token'],
-            'refresh_token': token.get('refresh_token'),
-            'expires_at': token.get('expires_at'),
-            'token_type': token['token_type']
-        }
-        
-        # Fetch user information from OneDrive/Microsoft Graph API
-        user_response = onedrive.get('https://graph.microsoft.com/v1.0/me')
-        user_info = user_response.json()
-        
-        # Look for email in standard Microsoft Graph API response fields
-        email = user_info.get('userPrincipalName') or user_info.get('mail')
-        
-        if not email:
-            logger.error(f"No email found in OneDrive user info: {user_info}")
-            return jsonify({"error": "Could not retrieve email from OneDrive account"}), 400
-        
-        # Find or create user
-        user = User.query.filter_by(email=email).first()
-        if not user:
-            user = User(email=email)
-            db.session.add(user)
-        
-        # Update user's OneDrive token information
-        user.onedrive_access_token = token_data['access_token']
-        user.onedrive_refresh_token = token_data.get('refresh_token')
-        user.onedrive_token_expires_at = token_data.get('expires_at')
-        
-        db.session.commit()
-        
-        # Redirect to success page or return success response
-        return jsonify({"success": True, "email": email})
-        
-    except Exception as e:
-        logger.error(f"OneDrive authorization error: {str(e)}")
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+    token = onedrive.authorize_access_token()
+    user_info = onedrive.get('me').json()
+    
+    # Use logger instead of print
+    logger.info(f"Available keys in user_info: {user_info.keys()}")
+    
+    # Try different possible email field names
+    email = user_info.get('userinfo').get('email')
+    
+    
+    if not email:
+        # If no email field is found, use an alternative identifier or return an error
+        logger.error(f"No email field found in OneDrive user info: {user_info}")
+        return jsonify({"error": user_info}), 400
+    
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        user = User(email=email, onedrive_token=token)
+        db.session.add(user)
+    else:
+        user.onedrive_token = token
+    
+    db.session.commit()
+    return jsonify(user_info)
+
 # Google Drive operations
 @app.route('/files/google')
 def list_google_files():
