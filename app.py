@@ -77,12 +77,28 @@ def login_onedrive():
 def authorize_onedrive():
     token = onedrive.authorize_access_token()
     user_info = onedrive.get('me').json()
-    user = User.query.filter_by(email=user_info['userPrincipalName']).first()
+    
+    # Debug: print available keys
+    print(f"Available keys in user_info: {user_info.keys()}")
+    
+    # Try different possible email field names
+    email = None
+    for field in ['userPrincipalName', 'mail', 'email']:
+        if field in user_info:
+            email = user_info[field]
+            break
+    
+    if not email:
+        # If no email field is found, use an alternative identifier or return an error
+        return jsonify({"error": "Could not determine user email"}), 400
+    
+    user = User.query.filter_by(email=email).first()
     if not user:
-        user = User(email=user_info['userPrincipalName'], onedrive_token=token)
+        user = User(email=email, onedrive_token=token)
         db.session.add(user)
     else:
         user.onedrive_token = token
+    
     db.session.commit()
     return jsonify(user_info)
 
