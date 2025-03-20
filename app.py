@@ -93,7 +93,11 @@ def authorize_onedrive():
     logger.info(f"Available keys in user_info: {user_info.keys()}")
     
     # Try different possible email field names
-    email = user_info.get('userinfo').get('email')
+    email = token.get('userinfo', {}).get('email')
+        
+        # If email is not found, try preferred_username as fallback
+    if not email:
+        email = token.get('userinfo', {}).get('preferred_username')
     
     
     if not email:
