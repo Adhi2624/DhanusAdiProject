@@ -58,7 +58,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True, nullable=False)
     google_token = db.Column(db.JSON)
-    onedrive_token = db.Column(db.JSON, nullable=True)
+    onedrive_token = db.Column(db.JSON)
 
 @app.route('/')
 def home():
