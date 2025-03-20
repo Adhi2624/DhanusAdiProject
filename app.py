@@ -87,7 +87,9 @@ def login_onedrive():
 @app.route('/authorize/onedrive')
 def authorize_onedrive():
     token = onedrive.authorize_access_token()
+    logger.info(token)
     user_info = onedrive.get('me').json()
+    logger.info(user_info)
     
     # Use logger instead of print
     logger.info(f"Available keys in user_info: {user_info.keys()}")
