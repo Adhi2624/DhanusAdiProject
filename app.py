@@ -113,7 +113,7 @@ def authorize_onedrive():
         user.onedrive_token = token
     
     db.session.commit()
-    return jsonify(user)
+    return jsonify({"success": True, "message": "Logged in successfully", "email": email})
 
 # Google Drive operations
 @app.route('/files/google')
