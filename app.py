@@ -35,6 +35,7 @@ onedrive = oauth.register(
     access_token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
     authorize_url='https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     api_base_url='https://graph.microsoft.com/v1.0/',
+    jwks_uri= 'https://login.microsoftonline.com/common/discovery/v2.0/keys',
     client_kwargs={'scope': 'openid email profile Files.ReadWrite'}
 )
 
