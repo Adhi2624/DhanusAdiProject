@@ -56,7 +56,7 @@ onedrive = oauth.register(
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(150), unique=True, nullable=False)
+    email = db.Column(db.String(150), nullable=False)
     google_token = db.Column(db.JSON)
     onedrive_token = db.Column(db.JSON)
 
