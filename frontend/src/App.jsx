@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 
 
-const API_BASE = import.meta.env.REACT_APP_BACKEND; // Change if backend is hosted elsewhere
+const API_BASE = 'https://dhanusadiproject.onrender.com'; // Change if backend is hosted elsewhere
 
 export default function App() {
   const [googleFiles, setGoogleFiles] = useState([]);
@@ -137,7 +137,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 w-full">
-      <div className="w-full px-4 py-8">
+      <div className="w-screen px-4 py-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-extrabold text-gray-900">Cloud File Manager</h1>
           <p className="mt-2 text-lg text-gray-600">Manage your files across multiple cloud services</p>
